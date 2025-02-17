@@ -17,7 +17,7 @@ jobs:
 
       - name: Terraform Init
         working-directory: ./infra
-        run: terraform init -backend-config="bucket=wiz_terraform_state_carlos" -backend-config="key=networking/terraform.tfstate" -backend-config="region=us-east-2"
+        run: terraform init -backend-config="bucket=wiz-terraform-state-carlos" -backend-config="key=networking/terraform.tfstate" -backend-config="region=us-east-2"
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
