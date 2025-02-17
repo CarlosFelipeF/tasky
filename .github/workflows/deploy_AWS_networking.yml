@@ -1,12 +1,14 @@
-name: Deploy AWS Networking
+name: Deploy MongoDB Server
 
 on:
-  push:
-    branches:
-      - main
+  workflow_run:
+    workflows: ["Deploy AWS Networking"]
+    types:
+      - completed
 
 jobs:
-  deploy-networking:
+  deploy-mongo:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
@@ -15,28 +17,32 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v2
         with:
-          terraform_version: '1.4.6'  # Use your preferred Terraform version
+          terraform_version: '1.4.6'
 
       - name: Terraform Init
-        working-directory: ./infra
-        run: terraform init
+        working-directory: ./infra/mongo
+        run: terraform init -backend-config="bucket=wiz-terraform-state-carlos" -backend-config="key=mongo/terraform.tfstate" -backend-config="region=us-east-2"
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: us-east-2
 
       - name: Terraform Plan
-        working-directory: ./infra
+        working-directory: ./infra/mongo
         run: terraform plan -out=tfplan
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: us-east-2
+          TF_VAR_mongo_admin_user: ${{ secrets.MONGO_ADMIN_USER }}
+          TF_VAR_mongo_admin_password: ${{ secrets.MONGO_ADMIN_PASSWORD }}
 
       - name: Terraform Apply
-        working-directory: ./infra
+        working-directory: ./infra/mongo
         run: terraform apply -auto-approve tfplan
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: us-east-2
+          TF_VAR_mongo_admin_user: ${{ secrets.MONGO_ADMIN_USER }}
+          TF_VAR_mongo_admin_password: ${{ secrets.MONGO_ADMIN_PASSWORD }}
