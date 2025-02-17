@@ -17,10 +17,6 @@ jobs:
         with:
           terraform_version: '1.4.6'  # Use your preferred Terraform version
 
-      - name: List files in infra folder
-        working-directory: ./infra
-        run: ls -la
-  
       - name: Terraform Init
         working-directory: ./infra
         run: terraform init
