@@ -48,6 +48,8 @@ resource "aws_vpc" "main" {
   }
 }
 
+# Make sure you do not already have unused Internet Gateways attached;
+# if you hit the IGW limit, consider deleting unused ones or reusing an existing one.
 resource "aws_internet_gateway" "igw" {
   vpc_id = aws_vpc.main.id
 
@@ -82,7 +84,8 @@ resource "aws_subnet" "private" {
 }
 
 resource "aws_eip" "nat" {
-  vpc = true
+  # Replace deprecated 'vpc = true' with 'domain = "vpc"'
+  domain = "vpc"
 }
 
 resource "aws_nat_gateway" "nat" {
