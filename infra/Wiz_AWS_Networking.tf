@@ -1,3 +1,11 @@
+terraform {
+  backend "s3" {
+    bucket = "wiz_terraform_state_carlos"
+    key    = "networking/terraform.tfstate"
+    region = "us-east-2"
+  }
+}
+
 provider "aws" {
   region = var.aws_region
 }
@@ -26,12 +34,10 @@ variable "private_subnets_cidrs" {
   default     = ["10.1.101.0/24", "10.1.102.0/24"]
 }
 
-# Get the list of available AZs
 data "aws_availability_zones" "available" {
   state = "available"
 }
 
-# Create the VPC
 resource "aws_vpc" "main" {
   cidr_block           = var.vpc_cidr
   enable_dns_support   = true
@@ -42,7 +48,6 @@ resource "aws_vpc" "main" {
   }
 }
 
-# Create the Internet Gateway for the VPC
 resource "aws_internet_gateway" "igw" {
   vpc_id = aws_vpc.main.id
 
@@ -51,7 +56,6 @@ resource "aws_internet_gateway" "igw" {
   }
 }
 
-# Create two public subnets in different AZs with the required tag for ELB
 resource "aws_subnet" "public" {
   count                   = length(var.public_subnets_cidrs)
   vpc_id                  = aws_vpc.main.id
@@ -60,12 +64,11 @@ resource "aws_subnet" "public" {
   map_public_ip_on_launch = true
 
   tags = {
-    Name                        = "wiz-public-${count.index + 1}"
-    "kubernetes.io/role/elb"    = "1"
+    Name                     = "wiz-public-${count.index + 1}"
+    "kubernetes.io/role/elb" = "1"
   }
 }
 
-# Create two private subnets in different AZs
 resource "aws_subnet" "private" {
   count             = length(var.private_subnets_cidrs)
   vpc_id            = aws_vpc.main.id
@@ -78,12 +81,10 @@ resource "aws_subnet" "private" {
   }
 }
 
-# Allocate an Elastic IP for the NAT Gateway
 resource "aws_eip" "nat" {
   vpc = true
 }
 
-# Create the NAT Gateway in the first public subnet
 resource "aws_nat_gateway" "nat" {
   allocation_id = aws_eip.nat.id
   subnet_id     = aws_subnet.public[0].id
@@ -94,7 +95,6 @@ resource "aws_nat_gateway" "nat" {
   depends_on = [aws_internet_gateway.igw]
 }
 
-# Create a route table for public subnets and add a route to the Internet Gateway
 resource "aws_route_table" "public" {
   vpc_id = aws_vpc.main.id
 
@@ -108,14 +108,12 @@ resource "aws_route_table" "public" {
   }
 }
 
-# Associate the public subnets with the public route table
 resource "aws_route_table_association" "public" {
   count          = length(aws_subnet.public)
   subnet_id      = aws_subnet.public[count.index].id
   route_table_id = aws_route_table.public.id
 }
 
-# Create a route table for private subnets and add a route to the NAT Gateway
 resource "aws_route_table" "private" {
   vpc_id = aws_vpc.main.id
 
@@ -129,14 +127,12 @@ resource "aws_route_table" "private" {
   }
 }
 
-# Associate the private subnets with the private route table
 resource "aws_route_table_association" "private" {
   count          = length(aws_subnet.private)
   subnet_id      = aws_subnet.private[count.index].id
   route_table_id = aws_route_table.private.id
 }
 
-# Outputs to reference created resources
 output "wiz_vpc_id" {
   value = aws_vpc.main.id
 }
