@@ -1,0 +1,29 @@
+name: Destroy AWS Networking
+
+on:
+  workflow_dispatch:
+
+jobs:
+  destroy-network:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: '1.4.6'
+
+      - name: Initialize Terraform and Destroy Infrastructure
+        working-directory: ./infra
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: us-east-2
+        run: |
+          terraform init \
+            -backend-config="bucket=wiz_terraform_state_carlos" \
+            -backend-config="key=networking/terraform.tfstate" \
+            -backend-config="region=us-east-2"
+          terraform destroy -auto-approve
