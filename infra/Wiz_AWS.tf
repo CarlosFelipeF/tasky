@@ -217,7 +217,7 @@ resource "aws_security_group" "mongo_sg" {
 
 # Create the EC2 instance for MongoDB
 resource "aws_instance" "mongo" {
-  ami                    = "ami-00288dd67c030259b"  # Ubuntu 16.04
+  ami                    = "ami-05147de884850d26c"  # Ubuntu 20.04
   instance_type          = "t2.micro"
   subnet_id              = aws_subnet.public[0].id  # Use the first public subnet
   vpc_security_group_ids = [aws_security_group.mongo_sg.id]
