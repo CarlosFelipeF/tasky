@@ -6,7 +6,7 @@ data "terraform_remote_state" "networking" {
   backend = "s3"
   config = {
     bucket = "wiz-terraform-state-carlos"
-    key    = "networking/terraform.tfstate"
+    key    = "mongo/terraform.tfstate"
     region = "us-east-2"
   }
 }
