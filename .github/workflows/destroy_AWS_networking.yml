@@ -1,10 +1,10 @@
-name: Deploy AWS Networking
+name: Destroy AWS Networking
 
 on:
   workflow_dispatch:
 
 jobs:
-  deploy-networking:
+  destroy-networking:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
@@ -23,17 +23,9 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: us-east-2
 
-      - name: Terraform Plan
+      - name: Terraform Destroy
         working-directory: ./infra
-        run: terraform plan -out=tfplan
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: us-east-2
-
-      - name: Terraform Apply
-        working-directory: ./infra
-        run: terraform apply -auto-approve tfplan
+        run: terraform destroy -auto-approve
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
