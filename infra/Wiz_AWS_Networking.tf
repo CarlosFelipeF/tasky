@@ -1,6 +1,6 @@
 terraform {
   backend "s3" {
-    bucket = "wiz_terraform_state_carlos"
+    bucket = "wiz-terraform-state-carlos"
     key    = "networking/terraform.tfstate"
     region = "us-east-2"
   }
