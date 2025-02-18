@@ -37,7 +37,6 @@ variable "private_subnets_cidrs" {
   default     = ["10.1.101.0/24", "10.1.102.0/24"]
 }
 
-# MongoDB credentials (pass these as TF_VAR_mongo_admin_user and TF_VAR_mongo_admin_password)
 variable "mongo_admin_user" {
   description = "MongoDB admin username"
   type        = string
@@ -95,10 +94,10 @@ resource "aws_subnet" "public" {
 
 # Create private subnets
 resource "aws_subnet" "private" {
-  count             = length(var.private_subnets_cidrs)
-  vpc_id            = aws_vpc.main.id
-  cidr_block        = var.private_subnets_cidrs[count.index]
-  availability_zone = data.aws_availability_zones.available.names[count.index]
+  count                   = length(var.private_subnets_cidrs)
+  vpc_id                  = aws_vpc.main.id
+  cidr_block              = var.private_subnets_cidrs[count.index]
+  availability_zone       = data.aws_availability_zones.available.names[count.index]
   map_public_ip_on_launch = false
 
   tags = {
@@ -245,6 +244,186 @@ resource "aws_instance" "mongo" {
 }
 
 ##############################
+# EKS CLUSTER & NODE GROUP RESOURCES
+##############################
+# Create an IAM Role for the EKS cluster
+resource "aws_iam_role" "eks_cluster_role" {
+  name = "eks-cluster-role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [{
+      Effect    = "Allow",
+      Principal = { Service = "eks.amazonaws.com" },
+      Action    = "sts:AssumeRole"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "eks_cluster_policy" {
+  role       = aws_iam_role.eks_cluster_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
+}
+
+# Create the EKS Cluster using version 1.32.
+resource "aws_eks_cluster" "eks_cluster" {
+  name     = "my-eks-cluster"
+  version  = "1.32"
+  role_arn = aws_iam_role.eks_cluster_role.arn
+
+  vpc_config {
+    subnet_ids              = aws_subnet.private[*].id
+    endpoint_public_access  = true
+    endpoint_private_access = true
+  }
+
+  depends_on = [aws_internet_gateway.igw]
+}
+
+# Create an IAM Role for the EKS node group.
+resource "aws_iam_role" "eks_node_role" {
+  name = "eks-node-role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [{
+      Effect    = "Allow",
+      Principal = { Service = "ec2.amazonaws.com" },
+      Action    = "sts:AssumeRole"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "eks_worker_policy" {
+  role       = aws_iam_role.eks_node_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
+}
+
+resource "aws_iam_role_policy_attachment" "eks_cni_policy" {
+  role       = aws_iam_role.eks_node_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
+}
+
+resource "aws_iam_role_policy_attachment" "eks_ec2_policy" {
+  role       = aws_iam_role.eks_node_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+}
+
+# Create an EKS Managed Node Group in your private subnets.
+resource "aws_eks_node_group" "eks_node_group" {
+  cluster_name    = aws_eks_cluster.eks_cluster.name
+  node_group_name = "eks-node-group"
+  node_role_arn   = aws_iam_role.eks_node_role.arn
+  subnet_ids      = aws_subnet.private[*].id
+
+  scaling_config {
+    desired_size = 1
+    min_size     = 1
+    max_size     = 2
+  }
+
+  instance_types = ["t3.medium"]
+
+  depends_on = [
+    aws_iam_role_policy_attachment.eks_worker_policy,
+    aws_iam_role_policy_attachment.eks_cni_policy,
+    aws_iam_role_policy_attachment.eks_ec2_policy,
+  ]
+}
+
+##############################
+# AWS LOAD BALANCER CONTROLLER DEPLOYMENT
+##############################
+
+# Data sources to get EKS cluster info for Helm
+data "aws_eks_cluster" "cluster" {
+  name = aws_eks_cluster.eks_cluster.name
+}
+
+data "aws_eks_cluster_auth" "cluster" {
+  name = aws_eks_cluster.eks_cluster.name
+}
+
+# Get the OIDC provider (required for associating IAM roles with service accounts)
+data "aws_iam_openid_connect_provider" "eks_oidc" {
+  url = aws_eks_cluster.eks_cluster.identity[0].oidc[0].issuer
+}
+
+# Create an IAM Role for the AWS LB Controller with OIDC trust
+resource "aws_iam_role" "alb_controller_role" {
+  name = "eks-alb-controller-role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [{
+      Effect = "Allow",
+      Principal = {
+        Federated = data.aws_iam_openid_connect_provider.eks_oidc.arn
+      },
+      Action = "sts:AssumeRoleWithWebIdentity",
+      Condition = {
+        "StringEquals" = {
+          "${replace(data.aws_iam_openid_connect_provider.eks_oidc.url, "https://", "")}:sub" = "system:serviceaccount:kube-system:aws-load-balancer-controller"
+        }
+      }
+    }]
+  })
+}
+
+# Attach the recommended LB Controller policy (replace the policy ARN with the current AWS recommended ARN)
+resource "aws_iam_role_policy_attachment" "alb_controller_policy_attach" {
+  role       = aws_iam_role.alb_controller_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AWSLoadBalancerControllerIAMPolicy"
+}
+
+# Create the Kubernetes service account for the LB Controller
+provider "kubernetes" {
+  host                   = data.aws_eks_cluster.cluster.endpoint
+  token                  = data.aws_eks_cluster_auth.cluster.token
+  cluster_ca_certificate = base64decode(data.aws_eks_cluster.cluster.certificate_authority[0].data)
+}
+
+resource "kubernetes_service_account" "alb_controller_sa" {
+  metadata {
+    name      = "aws-load-balancer-controller"
+    namespace = "kube-system"
+    annotations = {
+      "eks.amazonaws.com/role-arn" = aws_iam_role.alb_controller_role.arn
+    }
+  }
+}
+
+# Configure the Helm provider to deploy the LB Controller
+provider "helm" {
+  kubernetes {
+    host                   = data.aws_eks_cluster.cluster.endpoint
+    token                  = data.aws_eks_cluster_auth.cluster.token
+    cluster_ca_certificate = base64decode(data.aws_eks_cluster.cluster.certificate_authority[0].data)
+  }
+}
+
+# Deploy the AWS Load Balancer Controller via Helm
+resource "helm_release" "aws_load_balancer_controller" {
+  name       = "aws-load-balancer-controller"
+  chart      = "aws-load-balancer-controller"
+  repository = "https://aws.github.io/eks-charts"
+  namespace  = "kube-system"
+  version    = "1.5.3"  # Adjust the version if needed
+
+  set {
+    name  = "clusterName"
+    value = aws_eks_cluster.eks_cluster.name
+  }
+
+  set {
+    name  = "serviceAccount.create"
+    value = "false"
+  }
+
+  set {
+    name  = "serviceAccount.name"
+    value = kubernetes_service_account.alb_controller_sa.metadata[0].name
+  }
+}
+
+##############################
 # OUTPUTS
 ##############################
 output "wiz_vpc_id" {
@@ -261,4 +440,13 @@ output "wiz_private_subnets" {
 
 output "wiz_nat_gateway_id" {
   value = aws_nat_gateway.nat.id
+}
+
+# New Outputs for EKS
+output "eks_cluster_name" {
+  value = aws_eks_cluster.eks_cluster.name
+}
+
+output "eks_cluster_endpoint" {
+  value = aws_eks_cluster.eks_cluster.endpoint
 }
