@@ -222,6 +222,8 @@ resource "aws_instance" "mongo" {
   vpc_security_group_ids = [aws_security_group.mongo_sg.id]
   iam_instance_profile   = aws_iam_instance_profile.mongo_ec2_instance_profile.name
 
+  key_name = "Wiz"
+
   user_data = <<-EOF
     #!/bin/bash
     set -e
