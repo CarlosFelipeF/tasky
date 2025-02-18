@@ -328,7 +328,7 @@ resource "aws_eks_node_group" "eks_node_group" {
     aws_iam_role_policy_attachment.eks_ec2_policy,
   ]
 }
-
+/*
 ##############################
 # AWS LOAD BALANCER CONTROLLER DEPLOYMENT
 ##############################
@@ -450,3 +450,4 @@ output "eks_cluster_name" {
 output "eks_cluster_endpoint" {
   value = aws_eks_cluster.eks_cluster.endpoint
 }
+*/
