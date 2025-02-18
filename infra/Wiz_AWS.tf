@@ -1,8 +1,8 @@
 terraform {
   backend "s3" {
-    bucket = "wiz-terraform-state-carlos"
-    key    = "networking/terraform.tfstate"
-    region = "us-east-2"
+    bucket = "wiz-terraform-state-carlosf"
+    key    = "infrastructure/terraform.tfstate"
+    region = "ap-southeast-2"
   }
 }
 
@@ -16,7 +16,7 @@ provider "aws" {
 variable "aws_region" {
   description = "AWS region to deploy resources"
   type        = string
-  default     = "us-east-2"
+  default     = "ap-southeast-2"
 }
 
 variable "vpc_cidr" {
@@ -217,7 +217,7 @@ resource "aws_security_group" "mongo_sg" {
 
 # Create the EC2 instance for MongoDB
 resource "aws_instance" "mongo" {
-  ami                    = "ami-05147de884850d26c"  # Ubuntu 20.04
+  ami                    = "ami-0b87a8055f0211d32"  # Ubuntu 16.04
   instance_type          = "t2.micro"
   subnet_id              = aws_subnet.public[0].id  # Use the first public subnet
   vpc_security_group_ids = [aws_security_group.mongo_sg.id]
