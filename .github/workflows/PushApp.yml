@@ -26,7 +26,7 @@ jobs:
       with:
         context: .
         push: true
-        tags: ghcr.io/CarlosFelipeF/tasky:latest
+        tags: ghcr.io/carlosfelipef/tasky:latest
 
     - name: Logout from container registry
       run: docker logout ghcr.io
