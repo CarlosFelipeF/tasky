@@ -422,32 +422,4 @@ resource "helm_release" "aws_load_balancer_controller" {
     value = kubernetes_service_account.alb_controller_sa.metadata[0].name
   }
 }
-
-##############################
-# OUTPUTS
-##############################
-output "wiz_vpc_id" {
-  value = aws_vpc.main.id
-}
-
-output "wiz_public_subnets" {
-  value = aws_subnet.public[*].id
-}
-
-output "wiz_private_subnets" {
-  value = aws_subnet.private[*].id
-}
-
-output "wiz_nat_gateway_id" {
-  value = aws_nat_gateway.nat.id
-}
-
-# New Outputs for EKS
-output "eks_cluster_name" {
-  value = aws_eks_cluster.eks_cluster.name
-}
-
-output "eks_cluster_endpoint" {
-  value = aws_eks_cluster.eks_cluster.endpoint
-}
 */
