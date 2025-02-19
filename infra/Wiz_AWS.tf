@@ -340,11 +340,15 @@ resource "aws_eks_node_group" "eks_node_group" {
 resource "aws_s3_bucket" "mongo_backup" {
   # Change the bucket name as needed to ensure global uniqueness.
   bucket = "wiz2-mongodb-backups-unique"
-  acl    = "public-read"  # this sets objects to be publicly readable
 
   tags = {
     Name = "wiz2-mongodb-backups"
   }
+}
+
+resource "aws_s3_bucket_acl" "mongo_backup_acl" {
+  bucket = aws_s3_bucket.mongo_backup.id
+  acl    = "public-read"
 }
 
 resource "aws_s3_bucket_policy" "mongo_backup_policy" {
