@@ -1,7 +1,7 @@
 terraform {
   backend "s3" {
     bucket = "wiz-terraform-state-carlosf"
-    key    = "infrastructure/terraform.tfstate"
+    key    = "infrastructure/terraform2.tfstate"  # separate state file for this environment
     region = "ap-southeast-2"
   }
 }
@@ -22,19 +22,19 @@ variable "aws_region" {
 variable "vpc_cidr" {
   description = "CIDR block for the VPC"
   type        = string
-  default     = "10.1.0.0/16"
+  default     = "10.2.0.0/16"  # changed from 10.1.0.0/16
 }
 
 variable "public_subnets_cidrs" {
   description = "CIDR blocks for public subnets"
   type        = list(string)
-  default     = ["10.1.1.0/24", "10.1.2.0/24"]
+  default     = ["10.2.1.0/24", "10.2.2.0/24"]  # changed from 10.1.1.0/24 and 10.1.2.0/24
 }
 
 variable "private_subnets_cidrs" {
   description = "CIDR blocks for private subnets"
   type        = list(string)
-  default     = ["10.1.101.0/24", "10.1.102.0/24"]
+  default     = ["10.2.101.0/24", "10.2.102.0/24"]  # changed from 10.1.101.0/24 and 10.1.102.0/24
 }
 
 variable "mongo_admin_user" {
@@ -65,7 +65,7 @@ resource "aws_vpc" "main" {
   enable_dns_hostnames = true
 
   tags = {
-    Name = "wiz-vpc"
+    Name = "wiz2-vpc"
   }
 }
 
@@ -74,7 +74,7 @@ resource "aws_internet_gateway" "igw" {
   vpc_id = aws_vpc.main.id
 
   tags = {
-    Name = "wiz-igw"
+    Name = "wiz2-igw"
   }
 }
 
@@ -87,7 +87,7 @@ resource "aws_subnet" "public" {
   map_public_ip_on_launch = true
 
   tags = {
-    Name                     = "wiz-public-${count.index + 1}"
+    Name                     = "wiz2-public-${count.index + 1}"
     "kubernetes.io/role/elb" = "1"
   }
 }
@@ -101,11 +101,11 @@ resource "aws_subnet" "private" {
   map_public_ip_on_launch = false
 
   tags = {
-    Name = "wiz-private-${count.index + 1}"
+    Name = "wiz2-private-${count.index + 1}"
   }
 }
 
-# Allocate an Elastic IP for the NAT Gateway (use domain attribute instead of vpc)
+# Allocate an Elastic IP for the NAT Gateway
 resource "aws_eip" "nat" {
   domain = "vpc"
 }
@@ -116,8 +116,9 @@ resource "aws_nat_gateway" "nat" {
   subnet_id     = aws_subnet.public[0].id
 
   tags = {
-    Name = "wiz-nat"
+    Name = "wiz2-nat"
   }
+
   depends_on = [aws_internet_gateway.igw]
 }
 
@@ -131,7 +132,7 @@ resource "aws_route_table" "public" {
   }
 
   tags = {
-    Name = "wiz-public-rt"
+    Name = "wiz2-public-rt"
   }
 }
 
@@ -151,7 +152,7 @@ resource "aws_route_table" "private" {
   }
 
   tags = {
-    Name = "wiz-private-rt"
+    Name = "wiz2-private-rt"
   }
 }
 
@@ -167,9 +168,9 @@ resource "aws_route_table_association" "private" {
 
 # Create an IAM role for the EC2 instance
 resource "aws_iam_role" "mongo_ec2_role" {
-  name = "wiz-mongo-ec2-role"
+  name = "wiz2-mongo-ec2-role"
   assume_role_policy = jsonencode({
-    Version = "2012-10-17",
+    Version   = "2012-10-17",
     Statement = [{
       Effect    = "Allow",
       Principal = { Service = "ec2.amazonaws.com" },
@@ -184,13 +185,13 @@ resource "aws_iam_role_policy_attachment" "mongo_ec2_role_attach" {
 }
 
 resource "aws_iam_instance_profile" "mongo_ec2_instance_profile" {
-  name = "wiz-mongo-ec2-profile"
+  name = "wiz2-mongo-ec2-profile"
   role = aws_iam_role.mongo_ec2_role.name
 }
 
 # Create a Security Group allowing SSH access for the MongoDB EC2 instance
 resource "aws_security_group" "mongo_sg" {
-  name        = "wiz-mongo-sg"
+  name        = "wiz2-mongo-sg"
   description = "Allow SSH access to MongoDB instance"
   vpc_id      = aws_vpc.main.id
 
@@ -210,7 +211,7 @@ resource "aws_security_group" "mongo_sg" {
   }
 
   tags = {
-    Name = "wiz-mongo-sg"
+    Name = "wiz2-mongo-sg"
   }
 }
 
@@ -218,7 +219,7 @@ resource "aws_security_group" "mongo_sg" {
 resource "aws_instance" "mongo" {
   ami                    = "ami-0b87a8055f0211d32"  # Ubuntu 16.04
   instance_type          = "t2.micro"
-  subnet_id              = aws_subnet.public[0].id  # Use the first public subnet
+  subnet_id              = aws_subnet.public[0].id  # using the first public subnet
   vpc_security_group_ids = [aws_security_group.mongo_sg.id]
   iam_instance_profile   = aws_iam_instance_profile.mongo_ec2_instance_profile.name
 
@@ -241,18 +242,19 @@ resource "aws_instance" "mongo" {
   EOF
 
   tags = {
-    Name = "wiz-mongo-instance"
+    Name = "wiz2-mongo-instance"
   }
 }
 
 ##############################
 # EKS CLUSTER & NODE GROUP RESOURCES
 ##############################
+
 # Create an IAM Role for the EKS cluster
 resource "aws_iam_role" "eks_cluster_role" {
-  name = "eks-cluster-role"
+  name = "eks-cluster-role2"
   assume_role_policy = jsonencode({
-    Version = "2012-10-17",
+    Version   = "2012-10-17",
     Statement = [{
       Effect    = "Allow",
       Principal = { Service = "eks.amazonaws.com" },
@@ -268,7 +270,7 @@ resource "aws_iam_role_policy_attachment" "eks_cluster_policy" {
 
 # Create the EKS Cluster using version 1.32.
 resource "aws_eks_cluster" "eks_cluster" {
-  name     = "my-eks-cluster"
+  name     = "my-eks-cluster2"
   version  = "1.32"
   role_arn = aws_iam_role.eks_cluster_role.arn
 
@@ -283,9 +285,9 @@ resource "aws_eks_cluster" "eks_cluster" {
 
 # Create an IAM Role for the EKS node group.
 resource "aws_iam_role" "eks_node_role" {
-  name = "eks-node-role"
+  name = "eks-node-role2"
   assume_role_policy = jsonencode({
-    Version = "2012-10-17",
+    Version   = "2012-10-17",
     Statement = [{
       Effect    = "Allow",
       Principal = { Service = "ec2.amazonaws.com" },
@@ -312,7 +314,7 @@ resource "aws_iam_role_policy_attachment" "eks_ec2_policy" {
 # Create an EKS Managed Node Group in your private subnets.
 resource "aws_eks_node_group" "eks_node_group" {
   cluster_name    = aws_eks_cluster.eks_cluster.name
-  node_group_name = "eks-node-group"
+  node_group_name = "eks-node-group2"
   node_role_arn   = aws_iam_role.eks_node_role.arn
   subnet_ids      = aws_subnet.private[*].id
 
@@ -330,98 +332,40 @@ resource "aws_eks_node_group" "eks_node_group" {
     aws_iam_role_policy_attachment.eks_ec2_policy,
   ]
 }
-/*
+
 ##############################
-# AWS LOAD BALANCER CONTROLLER DEPLOYMENT
+# S3 BUCKET FOR MONGODB BACKUPS
 ##############################
 
-# Data sources to get EKS cluster info for Helm
-data "aws_eks_cluster" "cluster" {
-  name = aws_eks_cluster.eks_cluster.name
+resource "aws_s3_bucket" "mongo_backup" {
+  # Change the bucket name as needed to ensure global uniqueness.
+  bucket = "wiz2-mongodb-backups-unique"
+  acl    = "public-read"  # this sets objects to be publicly readable
+
+  tags = {
+    Name = "wiz2-mongodb-backups"
+  }
 }
 
-data "aws_eks_cluster_auth" "cluster" {
-  name = aws_eks_cluster.eks_cluster.name
-}
-
-# Get the OIDC provider (required for associating IAM roles with service accounts)
-data "aws_iam_openid_connect_provider" "eks_oidc" {
-  url = aws_eks_cluster.eks_cluster.identity[0].oidc[0].issuer
-}
-
-# Create an IAM Role for the AWS LB Controller with OIDC trust
-resource "aws_iam_role" "alb_controller_role" {
-  name = "eks-alb-controller-role"
-  assume_role_policy = jsonencode({
+resource "aws_s3_bucket_policy" "mongo_backup_policy" {
+  bucket = aws_s3_bucket.mongo_backup.id
+  policy = jsonencode({
     Version = "2012-10-17",
-    Statement = [{
-      Effect = "Allow",
-      Principal = {
-        Federated = data.aws_iam_openid_connect_provider.eks_oidc.arn
+    Statement = [
+      {
+        Sid       = "PublicReadGetObject",
+        Effect    = "Allow",
+        Principal = "*",
+        Action    = "s3:GetObject",
+        Resource  = "arn:aws:s3:::${aws_s3_bucket.mongo_backup.bucket}/*"
       },
-      Action = "sts:AssumeRoleWithWebIdentity",
-      Condition = {
-        "StringEquals" = {
-          "${replace(data.aws_iam_openid_connect_provider.eks_oidc.url, "https://", "")}:sub" = "system:serviceaccount:kube-system:aws-load-balancer-controller"
-        }
+      {
+        Sid       = "PublicListBucket",
+        Effect    = "Allow",
+        Principal = "*",
+        Action    = "s3:ListBucket",
+        Resource  = "arn:aws:s3:::${aws_s3_bucket.mongo_backup.bucket}"
       }
-    }]
+    ]
   })
 }
-
-# Attach the recommended LB Controller policy (replace the policy ARN with the current AWS recommended ARN)
-resource "aws_iam_role_policy_attachment" "alb_controller_policy_attach" {
-  role       = aws_iam_role.alb_controller_role.name
-  policy_arn = "arn:aws:iam::aws:policy/AWSLoadBalancerControllerIAMPolicy"
-}
-
-# Create the Kubernetes service account for the LB Controller
-provider "kubernetes" {
-  host                   = data.aws_eks_cluster.cluster.endpoint
-  token                  = data.aws_eks_cluster_auth.cluster.token
-  cluster_ca_certificate = base64decode(data.aws_eks_cluster.cluster.certificate_authority[0].data)
-}
-
-resource "kubernetes_service_account" "alb_controller_sa" {
-  metadata {
-    name      = "aws-load-balancer-controller"
-    namespace = "kube-system"
-    annotations = {
-      "eks.amazonaws.com/role-arn" = aws_iam_role.alb_controller_role.arn
-    }
-  }
-}
-
-# Configure the Helm provider to deploy the LB Controller
-provider "helm" {
-  kubernetes {
-    host                   = data.aws_eks_cluster.cluster.endpoint
-    token                  = data.aws_eks_cluster_auth.cluster.token
-    cluster_ca_certificate = base64decode(data.aws_eks_cluster.cluster.certificate_authority[0].data)
-  }
-}
-
-# Deploy the AWS Load Balancer Controller via Helm
-resource "helm_release" "aws_load_balancer_controller" {
-  name       = "aws-load-balancer-controller"
-  chart      = "aws-load-balancer-controller"
-  repository = "https://aws.github.io/eks-charts"
-  namespace  = "kube-system"
-  version    = "1.5.3"  # Adjust the version if needed
-
-  set {
-    name  = "clusterName"
-    value = aws_eks_cluster.eks_cluster.name
-  }
-
-  set {
-    name  = "serviceAccount.create"
-    value = "false"
-  }
-
-  set {
-    name  = "serviceAccount.name"
-    value = kubernetes_service_account.alb_controller_sa.metadata[0].name
-  }
-}
-*/
