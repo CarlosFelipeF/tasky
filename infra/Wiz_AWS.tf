@@ -189,10 +189,10 @@ resource "aws_iam_instance_profile" "mongo_ec2_instance_profile" {
   role = aws_iam_role.mongo_ec2_role.name
 }
 
-# Create a Security Group allowing SSH access for the MongoDB EC2 instance
+# Create a Security Group for MongoDB EC2 instance
 resource "aws_security_group" "mongo_sg" {
   name        = "wiz2-mongo-sg"
-  description = "Allow SSH access to MongoDB instance"
+  description = "Allow SSH and MongoDB access to MongoDB instance"
   vpc_id      = aws_vpc.main.id
 
   ingress {
@@ -201,6 +201,14 @@ resource "aws_security_group" "mongo_sg" {
     to_port     = 22
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    description     = "MongoDB access from EKS nodes"
+    from_port       = 27017
+    to_port         = 27017
+    protocol        = "tcp"
+    security_groups = [aws_security_group.eks_nodes.id]
   }
 
   egress {
@@ -311,6 +319,50 @@ resource "aws_iam_role_policy_attachment" "eks_ec2_policy" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
 }
 
+# Data source for the EKS Optimized AMI for version 1.32
+data "aws_ami" "eks_ami" {
+  most_recent = true
+  owners      = ["602401143452"]
+  filter {
+    name   = "name"
+    values = ["amazon-eks-node-1.32-v*"]
+  }
+}
+
+# Create a security group for EKS nodes
+resource "aws_security_group" "eks_nodes" {
+  name        = "eks-nodes-sg2"
+  description = "Security group for EKS node group"
+  vpc_id      = aws_vpc.main.id
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "eks-nodes-sg2"
+  }
+}
+
+# Create a launch template for EKS nodes
+resource "aws_launch_template" "eks_node_lt" {
+  name_prefix   = "eks-node-lt2-"
+  image_id      = data.aws_ami.eks_ami.id
+  instance_type = "t3.medium"
+
+  network_interfaces {
+    associate_public_ip_address = false
+    security_groups             = [aws_security_group.eks_nodes.id]
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
 # Create an EKS Managed Node Group in your private subnets.
 resource "aws_eks_node_group" "eks_node_group" {
   cluster_name    = aws_eks_cluster.eks_cluster.name
@@ -325,6 +377,11 @@ resource "aws_eks_node_group" "eks_node_group" {
   }
 
   instance_types = ["t3.medium"]
+
+  launch_template {
+    id      = aws_launch_template.eks_node_lt.id
+    version = "$Latest"
+  }
 
   depends_on = [
     aws_iam_role_policy_attachment.eks_worker_policy,
@@ -344,7 +401,6 @@ resource "aws_s3_bucket" "mongo_backup" {
   }
 }
 
-# Allow public access via bucket policy; disable blocking of public access.
 resource "aws_s3_bucket_public_access_block" "mongo_backup_block" {
   bucket                  = aws_s3_bucket.mongo_backup.id
   block_public_acls       = false
